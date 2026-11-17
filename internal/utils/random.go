@@ -4,9 +4,16 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 )
 
-const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+const (
+	charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	randomEmailLength     = 12
+	randomPasswordLength  = 12
+	passwordRequiredChars = "Aa1"
+)
 
 func RandomString(length int) string {
 	b := make([]byte, length)
@@ -19,4 +26,14 @@ func RandomString(length int) string {
 	}
 
 	return string(b)
+}
+
+// RandomEmail возвращает уникальный email для регистрации тестового пользователя
+func RandomEmail() string {
+	return fmt.Sprintf("autotest_%s@example.com", strings.ToLower(RandomString(randomEmailLength)))
+}
+
+// RandomPassword возвращает пароль по правилам сервиса: заглавные и строчные буквы, цифры, не короче 8 символов
+func RandomPassword() string {
+	return passwordRequiredChars + RandomString(randomPasswordLength)
 }

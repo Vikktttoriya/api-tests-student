@@ -3,11 +3,13 @@ package auth
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"api-tests-template/internal/client/http/auth"
+	"api-tests-template/internal/helpers/response"
 	"api-tests-template/internal/managers/auth/models"
 )
 
@@ -32,4 +34,10 @@ func Login(t *testing.T, username, password string) models.LoginOkResponse {
 	require.NoError(t, err)
 
 	return loginResponse
+}
+
+// Register регистрирует нового пользователя и возвращает его токен и данные, ожидает 201.
+// Ответ регистрации совпадает по структуре с ответом логина
+func Register(t *testing.T, request models.RegisterRequest) models.LoginOkResponse {
+	return response.ParseWithStatus[models.LoginOkResponse](t, auth.HttpPostAuthRegister(t, request), http.StatusCreated)
 }

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"log"
 
 	"api-tests-template/internal/utils"
@@ -20,4 +21,9 @@ func TearDownSuite() {
 // Precondition выводит текст в консоль с меткой [Precondition]
 func Precondition(text string) {
 	utils.LogWithLabelAndTimeStamp("Precondition", text)
+}
+
+// Step выводит в консоль описание шага теста с меткой [Step]
+func Step(format string, args ...any) {
+	utils.LogWithLabelAndTimeStamp("Step", fmt.Sprintf(format, args...))
 }
