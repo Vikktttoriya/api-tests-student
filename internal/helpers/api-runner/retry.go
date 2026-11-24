@@ -25,6 +25,7 @@ type retryOnUnavailableTransport struct {
 	base http.RoundTripper
 }
 
+// RoundTrip отправляет запрос и повторяет его с растущей паузой, пока nginx отвечает 503
 func (rt retryOnUnavailableTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	body, err := readAndCloseBody(request)
 	if err != nil {

@@ -3,7 +3,6 @@ package favorites
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +13,6 @@ import (
 	"api-tests-template/internal/fixtures"
 	"api-tests-template/internal/managers/advertisements"
 	advModels "api-tests-template/internal/managers/advertisements/models"
-	"api-tests-template/internal/managers/auth"
 	"api-tests-template/internal/managers/auth/models"
 	"api-tests-template/internal/managers/favorites"
 	commonModels "api-tests-template/internal/models"
@@ -27,6 +25,7 @@ const (
 	// сервер считает его пустым значением и отвечает 400 вместо 404
 	nonExistentAdvertisementId = "00000000-0000-4000-8000-000000000001"
 	invalidAdvertisementId     = "not-a-uuid"
+	photoPath                  = "testdata/photo.png"
 )
 
 // TestSuite seller — пользователь из переменных окружения, владелец объявлений;
@@ -44,9 +43,7 @@ func TestSuiteRun(t *testing.T) {
 
 func (s *TestSuite) SetupSuite() {
 	base.SetupSuite()
-
-	base.Precondition("Авторизация продавца с кредами из переменных окружения")
-	s.sellerData = auth.Login(s.T(), os.Getenv("TEST_LOGIN"), os.Getenv("TEST_PASSWORD"))
+	s.sellerData = base.LoginTestUser(s.T())
 
 	base.Precondition("Регистрация нового покупателя с пустым избранным")
 	s.buyerData = fixtures.NewUser(s.T())
@@ -186,14 +183,14 @@ func (s *TestSuite) TestAddOwnAdvertisementToFavorites() {
 func (s *TestSuite) TestAddFavoriteOverLimit() {
 	t := s.T()
 
-	base.Precondition("Заполняем избранное покупателя до лимита самыми старыми объявлениями каталога")
-	catalogIds := oldestCatalogAdvertisementIds(t, favorites.MaxFavoritesPerUser)
-	bulkResult := favorites.AddFavoritesBulk(t, s.buyerData.Token, catalogIds)
-	t.Cleanup(func() {
-		for _, advertisementId := range bulkResult.Added {
-			favorites.RemoveFavoriteIfExists(t, s.buyerData.Token, advertisementId)
-		}
-	})
+	base.Precondition(fmt.Sprintf("Продавец создаёт %d объявлений для заполнения избранного до лимита", favorites.MaxFavoritesPerUser))
+	advertisementIds := make([]string, 0, favorites.MaxFavoritesPerUser)
+	for range favorites.MaxFavoritesPerUser {
+		advertisementIds = append(advertisementIds, fixtures.NewAdvertisement(t, s.sellerData.Token, photoPath).Id)
+	}
+
+	base.Precondition("Покупатель добавляет созданные объявления в избранное одним запросом")
+	bulkResult := favorites.AddFavoritesBulk(t, s.buyerData.Token, advertisementIds)
 
 	extraAdvertisement := s.newSellerAdvertisement()
 
@@ -217,7 +214,7 @@ func (s *TestSuite) newSellerAdvertisement() advModels.Advertisement {
 	t := s.T()
 
 	base.Precondition("Продавец создаёт объявление")
-	advertisement := fixtures.NewAdvertisement(t, s.sellerData.Token)
+	advertisement := fixtures.NewAdvertisement(t, s.sellerData.Token, photoPath)
 	t.Cleanup(func() {
 		favorites.RemoveFavoriteIfExists(t, s.buyerData.Token, advertisement.Id)
 	})
@@ -238,17 +235,4 @@ func (s *TestSuite) addToFavoritesAndCheck(advertisementId string) {
 		list := favorites.GetFavorites(s.T(), s.buyerData.Token)
 		assertions.ContainsFavorite(s.T(), list.Items, advertisementId)
 	})
-}
-
-// oldestCatalogAdvertisementIds возвращает id count самых старых объявлений каталога.
-// Старые объявления берутся потому, что они стабильны, а свежие часто создаются и удаляются чужими тестами
-func oldestCatalogAdvertisementIds(t *testing.T, count int) []string {
-	list := advertisements.GetOldestAdvertisements(t, count)
-
-	ids := make([]string, 0, len(list.Items))
-	for _, item := range list.Items {
-		ids = append(ids, item.Id)
-	}
-
-	return ids
 }

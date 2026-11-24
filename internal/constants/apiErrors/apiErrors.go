@@ -27,6 +27,8 @@ const (
 	MessageQuantityNotNumber    = "cannot convert string value to int"
 	MessagePhotoRequired        = "at least 1 photo is required"
 	MessageTooManyPhotos        = "maximum 3 photos allowed"
+	// MessagePhotoTypeNotAllowedFormat номер фото в форме и его расширение в кавычках, например: photo 1 ... ".bmp"
+	MessagePhotoTypeNotAllowedFormat = "photo %d: file type not allowed: extension %q"
 )
 
 // Сообщения ручек избранного. Константы с суффиксом Format подставляются через fmt.Sprintf

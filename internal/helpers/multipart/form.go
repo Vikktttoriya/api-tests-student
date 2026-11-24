@@ -3,8 +3,8 @@ package multipart
 import (
 	"bytes"
 	"fmt"
-	"mime"
 	"mime/multipart"
+	"net/http"
 	"net/textproto"
 	"os"
 	"path/filepath"
@@ -14,7 +14,7 @@ import (
 )
 
 // BuildForm собирает тело multipart/form-data из текстовых полей и файлов и возвращает его вместе с Content-Type запроса.
-// Каждому файлу выставляется Content-Type по расширению (например, image/png), как это делает браузер
+// Content-Type каждого файла определяется по его содержимому (image/png, image/bmp, text/plain...)
 func BuildForm(t *testing.T, fields map[string]string, fileFieldName string, filePaths []string) (body, contentType string) {
 	t.Helper()
 
@@ -32,7 +32,7 @@ func BuildForm(t *testing.T, fields map[string]string, fileFieldName string, fil
 		header := make(textproto.MIMEHeader)
 		header.Set("Content-Disposition",
 			fmt.Sprintf(`form-data; name=%q; filename=%q`, fileFieldName, filepath.Base(filePath)))
-		header.Set("Content-Type", mime.TypeByExtension(filepath.Ext(filePath)))
+		header.Set("Content-Type", http.DetectContentType(content))
 
 		part, err := writer.CreatePart(header)
 		require.NoErrorf(t, err, "Не удалось добавить файл %s в форму", filePath)

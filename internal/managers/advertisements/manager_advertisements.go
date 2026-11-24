@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -12,6 +13,12 @@ import (
 	"api-tests-template/internal/helpers/response"
 	"api-tests-template/internal/managers/advertisements/models"
 	commonModels "api-tests-template/internal/models"
+	"api-tests-template/internal/utils"
+)
+
+const (
+	searchTimeout      = 5 * time.Second
+	searchPollInterval = 500 * time.Millisecond
 )
 
 func GetAdvertisementsList(t *testing.T, token, text string) models.AdvertisementsList {
@@ -28,10 +35,16 @@ func GetAdvertisementsList(t *testing.T, token, text string) models.Advertisemen
 	return advertisementsList
 }
 
-// GetOldestAdvertisements возвращает limit самых старых объявлений каталога, ожидает 200
-func GetOldestAdvertisements(t *testing.T, limit int) models.AdvertisementsList {
-	return response.ParseWithStatus[models.AdvertisementsList](t,
-		advertisements.HttpGetOldestAdvertisements(t, limit), http.StatusOK)
+// SearchAdvertisementsUntilFound повторяет поиск, пока выдача не станет непустой или не истечёт таймаут,
+// и возвращает последнюю выдачу. Поисковая выдача может обновиться не сразу после создания объявления
+func SearchAdvertisementsUntilFound(t *testing.T, token, text string) models.AdvertisementsList {
+	var list models.AdvertisementsList
+	utils.WaitUntil(searchTimeout, searchPollInterval, func() bool {
+		list = GetAdvertisementsList(t, token, text)
+		return len(list.Items) > 0
+	})
+
+	return list
 }
 
 // CreateAdvertisement создаёт объявление и возвращает его, ожидает 201

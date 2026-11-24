@@ -3,11 +3,10 @@ package advertisementCreate
 import (
 	"fmt"
 	"net/http"
-	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -16,24 +15,27 @@ import (
 	"api-tests-template/internal/fixtures"
 	"api-tests-template/internal/managers/advertisements"
 	advModels "api-tests-template/internal/managers/advertisements/models"
-	"api-tests-template/internal/managers/auth"
 	"api-tests-template/internal/managers/auth/models"
-	"api-tests-template/internal/utils"
 
 	base "api-tests-template/tests"
 )
 
 const (
-	maxPhotosCount        = 3
-	validationPhotosCount = 1
 	maxTitleLength        = 50
+	swaggerMaxTitleLength = 255
 	maxDescriptionLength  = 500
 	maxPrice              = 1000000
 	maxQuantity           = 100
 	notNumberValue        = "abc"
 
-	searchTimeout      = 5 * time.Second
-	searchPollInterval = 500 * time.Millisecond
+	photo1Path           = "testdata/photo_1.png"
+	photo2Path           = "testdata/photo_2.png"
+	photo3Path           = "testdata/photo_3.png"
+	photo4Path           = "testdata/photo_4.png"
+	unsupportedPhotoPath = "testdata/unsupported.bmp"
+	notPhotoPath         = "testdata/unsupported.txt"
+	// invalidPhotoNumber номер некорректного файла в форме: он передаётся единственным
+	invalidPhotoNumber = 1
 )
 
 type TestSuite struct {
@@ -47,9 +49,7 @@ func TestSuiteRun(t *testing.T) {
 
 func (s *TestSuite) SetupSuite() {
 	base.SetupSuite()
-
-	base.Precondition("Авторизация пользователя с кредами из переменных окружения")
-	s.loginData = auth.Login(s.T(), os.Getenv("TEST_LOGIN"), os.Getenv("TEST_PASSWORD"))
+	s.loginData = base.LoginTestUser(s.T())
 }
 
 func (s *TestSuite) TearDownSuite() {
@@ -60,8 +60,8 @@ func (s *TestSuite) TearDownSuite() {
 func (s *TestSuite) TestCreateAdvertisementWithAllParams() {
 	t := s.T()
 
-	base.Precondition(fmt.Sprintf("Готовим запрос со всеми параметрами и %d фотографиями", maxPhotosCount))
-	request := fixtures.AdvertisementRequest(t, maxPhotosCount)
+	request := fixtures.AdvertisementRequest(photo1Path, photo2Path, photo3Path)
+	base.Precondition(fmt.Sprintf("Готовим запрос со всеми параметрами и %d фотографиями", len(request.PhotoPaths)))
 
 	base.Step("POST /advertisement: %q", request.Title)
 	created := fixtures.CreateAdvertisement(t, s.loginData.Token, request)
@@ -80,12 +80,8 @@ func (s *TestSuite) TestCreateAdvertisementWithAllParams() {
 	})
 
 	s.Run("Объявление находится поиском по полному названию", func() {
-		base.Step("GET /advertisements?search=%s, ждём до %s", request.Title, searchTimeout)
-		var list advModels.AdvertisementsList
-		utils.WaitUntil(searchTimeout, searchPollInterval, func() bool {
-			list = advertisements.GetAdvertisementsList(s.T(), s.loginData.Token, request.Title)
-			return len(list.Items) > 0
-		})
+		base.Step("GET /advertisements?search=%s", request.Title)
+		list := advertisements.SearchAdvertisementsUntilFound(s.T(), s.loginData.Token, request.Title)
 		assertions.ContainsAdvertisementByTitle(s.T(), list.Items, request.Title)
 	})
 
@@ -97,7 +93,7 @@ func (s *TestSuite) TestCreateAdvertisementWithAllParams() {
 }
 
 // Negative: создание объявления без обязательных параметров или с некорректными параметрами возвращает 400.
-// Значения на границах допустимых диапазонов: каждый кейс портит одно поле валидного запроса
+// Каждый кейс портит одно поле валидного запроса
 func (s *TestSuite) TestCreateAdvertisementValidation() {
 	cases := []struct {
 		name            string
@@ -110,6 +106,9 @@ func (s *TestSuite) TestCreateAdvertisementValidation() {
 		{"название длиннее 50 символов",
 			func(r *advModels.CreateAdvertisementRequest) { r.Title = strings.Repeat("a", maxTitleLength+1) },
 			fmt.Sprintf(apiErrors.MessageTitleTooLongFormat, maxTitleLength, maxTitleLength+1)},
+		{"название длиннее 255 символов",
+			func(r *advModels.CreateAdvertisementRequest) { r.Title = strings.Repeat("a", swaggerMaxTitleLength+1) },
+			fmt.Sprintf(apiErrors.MessageTitleTooLongFormat, maxTitleLength, swaggerMaxTitleLength+1)},
 		{"пустое описание",
 			func(r *advModels.CreateAdvertisementRequest) { r.Description = "" },
 			apiErrors.MessageDescriptionRequired},
@@ -127,6 +126,9 @@ func (s *TestSuite) TestCreateAdvertisementValidation() {
 		{"цена не число",
 			func(r *advModels.CreateAdvertisementRequest) { r.Price = notNumberValue },
 			fmt.Sprintf(apiErrors.MessagePriceNotNumberFormat, notNumberValue)},
+		{"отрицательное количество",
+			func(r *advModels.CreateAdvertisementRequest) { r.Quantity = strconv.Itoa(-1) },
+			apiErrors.MessageQuantityOutOfRange},
 		{"нулевое количество",
 			func(r *advModels.CreateAdvertisementRequest) { r.Quantity = strconv.Itoa(0) },
 			apiErrors.MessageQuantityOutOfRange},
@@ -141,14 +143,20 @@ func (s *TestSuite) TestCreateAdvertisementValidation() {
 			apiErrors.MessagePhotoRequired},
 		{"больше 3 фотографий",
 			func(r *advModels.CreateAdvertisementRequest) {
-				r.PhotoPaths = utils.GeneratePNGFiles(s.T(), maxPhotosCount+1)
+				r.PhotoPaths = []string{photo1Path, photo2Path, photo3Path, photo4Path}
 			},
 			apiErrors.MessageTooManyPhotos},
+		{"фото неподдерживаемого формата (BMP)",
+			func(r *advModels.CreateAdvertisementRequest) { r.PhotoPaths = []string{unsupportedPhotoPath} },
+			fmt.Sprintf(apiErrors.MessagePhotoTypeNotAllowedFormat, invalidPhotoNumber, filepath.Ext(unsupportedPhotoPath))},
+		{"файл не является изображением (TXT)",
+			func(r *advModels.CreateAdvertisementRequest) { r.PhotoPaths = []string{notPhotoPath} },
+			fmt.Sprintf(apiErrors.MessagePhotoTypeNotAllowedFormat, invalidPhotoNumber, filepath.Ext(notPhotoPath))},
 	}
 
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			request := fixtures.AdvertisementRequest(s.T(), validationPhotosCount)
+			request := fixtures.AdvertisementRequest(photo1Path)
 			tc.modify(&request)
 
 			base.Step("POST /advertisement: %s, ожидаем 400", tc.name)
@@ -160,7 +168,7 @@ func (s *TestSuite) TestCreateAdvertisementValidation() {
 
 // Negative: создание объявления без авторизации возвращает 401
 func (s *TestSuite) TestCreateAdvertisementUnauthorized() {
-	request := fixtures.AdvertisementRequest(s.T(), validationPhotosCount)
+	request := fixtures.AdvertisementRequest(photo1Path)
 
 	for _, tc := range fixtures.UnauthorizedCases() {
 		s.Run(tc.Name, func() {

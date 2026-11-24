@@ -3,7 +3,6 @@ package advertisements
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"testing"
 
 	"api-tests-template/internal/constants/path"
@@ -18,17 +17,6 @@ func HttpGetAdvertisements(t *testing.T, token, textForSearch string) *http.Resp
 		Query("search", textForSearch).
 		Expect(t).
 		Status(http.StatusOK).
-		End().Response
-}
-
-// HttpGetOldestAdvertisements выполняет GET-запрос для получения limit самых старых объявлений каталога
-func HttpGetOldestAdvertisements(t *testing.T, limit int) *http.Response {
-	return apiRunner.GetRunner().Create().
-		Get(path.AdvertisementsPath).
-		Query("sort_by", "created_at").
-		Query("sort_order", "asc").
-		Query("limit", strconv.Itoa(limit)).
-		Expect(t).
 		End().Response
 }
 
